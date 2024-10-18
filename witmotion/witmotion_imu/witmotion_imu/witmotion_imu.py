@@ -13,13 +13,13 @@ class WitmotionImu(Node):
         self.imu_pub = self.create_publisher(Imu, '/witmotion/sensor/imu', 10)
         
         try:
-            self.serial_device = serial.Serial('/dev/ttyUSB0', 115200)
+            self.serial_device = serial.Serial('/dev/ttyUSB1', 115200)
             self.get_logger().info('Witmotion IMU node started')
         except serial.SerialException as e:
             self.get_logger().error(f"Failed to connect to serial device: {e}")
             rclpy.shutdown()
 
-        self.rate = 50  # Hz
+        self.rate = 10  # Hz
         self.timer = self.create_timer(1.0 / self.rate, self.read_data)
 
     def euler_to_quaternion(self, roll, pitch, yaw):
@@ -47,7 +47,7 @@ class WitmotionImu(Node):
 
                 imu_msg = Imu()
                 imu_msg.header.stamp = self.get_clock().now().to_msg()
-                imu_msg.header.frame_id = 'base_link'
+                imu_msg.header.frame_id = 'witmotion_imu'
                 imu_msg.orientation.x = q[0]
                 imu_msg.orientation.y = q[1]
                 imu_msg.orientation.z = q[2]

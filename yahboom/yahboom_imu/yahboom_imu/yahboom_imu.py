@@ -19,9 +19,10 @@ class YahboomImu(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('port_', '/dev/ttyUSB0'),
+                ('port_', '/dev/ttyUSB1'),
                 ('baudrate_', 9600),
-                ('timeout_', 0.5)
+                ('timeout_', 0.5),
+                ('rate_', 10.0),
             ]
         )
 
@@ -39,6 +40,7 @@ class YahboomImu(Node):
         self.port_ = self.get_parameter('port_').get_parameter_value().string_value
         self.baudrate_ = self.get_parameter('baudrate_').get_parameter_value().integer_value
         self.timeout_ = self.get_parameter('timeout_').get_parameter_value().double_value
+        self.rate = self.get_parameter('rate_').get_parameter_value().double_value
 
         # Inicialización del puerto serial
         try:
@@ -48,7 +50,7 @@ class YahboomImu(Node):
             rclpy.shutdown()
 
         # Configuración de un temporizador para leer los datos del puerto serial
-        self.create_timer(0.01, self.main_loop)
+        self.create_timer(1.0 / self.rate, self.main_loop)
 
     def main_loop(self):
         try:
@@ -78,8 +80,8 @@ class YahboomImu(Node):
     def publish_tf(self, quaternion):
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "base_link"
-        t.child_frame_id = "imu_link"
+        t.header.frame_id = "yahboom_imu"
+        t.child_frame_id = "yahboom_imu"
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
         t.transform.translation.z = 0.0
@@ -136,12 +138,13 @@ class YahboomImu(Node):
             mag_msg = MagneticField()
 
             imu_msg.header.stamp = self.get_clock().now().to_msg()
-            imu_msg.header.frame_id = "base_link"
+            imu_msg.header.frame_id = "yahboom_imu"
 
             mag_msg.header.stamp = self.get_clock().now().to_msg()
-            mag_msg.header.frame_id = "base_link"
+            mag_msg.header.frame_id = "yahboom_imu"
 
             angle_radian = [self.angle_degree[i] * math.pi / 180 for i in range(3)]
+            angle_radian[2] += math.pi / 2
             qua = self.quaternion_from_euler(angle_radian[0], angle_radian[1], angle_radian[2])
 
             imu_msg.orientation.x = float(qua[0])
@@ -164,7 +167,7 @@ class YahboomImu(Node):
             # Publica los mensajes
             self.imu_publisher.publish(imu_msg)
             self.mag_publisher.publish(mag_msg)
-            self.publish_tf(qua)
+            #self.publish_tf(qua)
 
 
 def main(args=None):
