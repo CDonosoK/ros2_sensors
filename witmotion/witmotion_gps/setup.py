@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'witmotion_gps = witmotion_gps.witmotion_gps:main',
         ],
     },
 )
