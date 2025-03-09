@@ -5,19 +5,19 @@ import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 
-class WitmotionGps(Node):
+class Ublox7(Node):
     def __init__(self):
-        super().__init__('witmotion_gps')
+        super().__init__('ublox_7')
 
-        self.gps_publisher = self.create_publisher(NavSatFix, '/witmotion/sensor/gps', 10)
+        self.gps_publisher = self.create_publisher(NavSatFix, '/ublox_7/sensor/gps', 10)
 
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('port_', '/dev/ttyUSB0'),
+                ('port_', '/dev/ttyACM0'),
                 ('baudrate_', 115200),
                 ('timeout_', 0.5),
-                ('rate_', 10)
+                ('rate_', 10.0)
             ]
         )
         self.port_ = self.get_parameter('port_').get_parameter_value().string_value
@@ -27,7 +27,7 @@ class WitmotionGps(Node):
 
         try:
             self.serial_device = serial.Serial(self.port_, self.baudrate_)
-            self.get_logger().info('Witmotion GPS node started')
+            self.get_logger().info('Ublox 7 node started')
         except serial.SerialException as e:
             self.get_logger().error(f"Failed to connect to serial device: {e}")
             rclpy.shutdown()
@@ -37,7 +37,7 @@ class WitmotionGps(Node):
     def read_data(self):
         data = self.serial_device.readline().decode('utf-8').split(',')
         try:
-            if data[0] == '$GNGGA':
+            if data[0] == '$GPGGA':
                 satelital = int(data[7])
                 self.alt = float(data[9])
                 if data[3] == 'S':
@@ -67,9 +67,8 @@ class WitmotionGps(Node):
                 gps_data.altitude = self.alt
                 gps_data.status.status = satelital
                 gps_data.header.stamp = self.get_clock().now().to_msg()
-                gps_data.header.frame_id = "witmotion_gps"
+                gps_data.header.frame_id = "ublox_7"
                 self.gps_publisher.publish(gps_data)
-
 
         except serial.SerialException as e:
             self.get_logger().error(f"Serial read error: {e}")
@@ -78,9 +77,9 @@ class WitmotionGps(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    witmotion_gps = WitmotionGps()
-    rclpy.spin(witmotion_gps)
-    witmotion_gps.destroy_node()
+    ublox_7 = Ublox7()
+    rclpy.spin(ublox_7)
+    ublox_7.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':

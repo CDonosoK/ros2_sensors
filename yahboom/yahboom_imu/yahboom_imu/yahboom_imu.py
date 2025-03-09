@@ -11,15 +11,13 @@ class YahboomImu(Node):
     def __init__(self):
         super().__init__('yahboom_imu')
 
-        # Publicadores
         self.imu_publisher = self.create_publisher(Imu, '/yahboom/sensor/imu', 10)
         self.mag_publisher = self.create_publisher(MagneticField, '/yahboom/sensor/magnetometer', 10)
 
-        # Declaración de parámetros
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('port_', '/dev/ttyUSB1'),
+                ('port_', '/dev/ttyUSB0'),
                 ('baudrate_', 9600),
                 ('timeout_', 0.5),
                 ('rate_', 10.0),
@@ -28,7 +26,6 @@ class YahboomImu(Node):
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
-        # Variables internas
         self.buff = {}
         self.key = 0
         self.angular_velocity = [0, 0, 0]
@@ -36,20 +33,17 @@ class YahboomImu(Node):
         self.magnetometer = [0, 0, 0]
         self.angle_degree = [0, 0, 0]
 
-        # Obtención de parámetros
         self.port_ = self.get_parameter('port_').get_parameter_value().string_value
         self.baudrate_ = self.get_parameter('baudrate_').get_parameter_value().integer_value
         self.timeout_ = self.get_parameter('timeout_').get_parameter_value().double_value
         self.rate = self.get_parameter('rate_').get_parameter_value().double_value
 
-        # Inicialización del puerto serial
         try:
             self.sensor = serial.Serial(port=self.port_, baudrate=self.baudrate_, timeout=self.timeout_)
         except serial.SerialException as e:
             self.get_logger().error(f'Error opening serial port: {e}')
             rclpy.shutdown()
 
-        # Configuración de un temporizador para leer los datos del puerto serial
         self.create_timer(1.0 / self.rate, self.main_loop)
 
     def main_loop(self):
@@ -94,12 +88,12 @@ class YahboomImu(Node):
     def handle_serial_data(self, raw_data):
         self.buff[self.key] = raw_data
         self.key += 1
-        if self.buff[0] != 0x55:  # Verifica el encabezado correcto
+        if self.buff[0] != 0x55:
             self.key = 0
-            self.buff = {}  # Reinicia el buffer si el encabezado no es correcto
+            self.buff = {}
             return
         
-        if self.key < 11:  # Asegúrate de tener suficientes datos
+        if self.key < 11:
             return
         else:
             data_buff = list(self.buff.values())
@@ -128,12 +122,10 @@ class YahboomImu(Node):
                     self.get_logger().error('0x54 Check failure')
             else:
                 self.get_logger().error("Unknown header detected")
-            
-            # Reinicia las variables de estado para la siguiente lectura
+
             self.buff = {}
             self.key = 0
 
-            # Publica los datos actualizados
             imu_msg = Imu()
             mag_msg = MagneticField()
 
@@ -164,10 +156,8 @@ class YahboomImu(Node):
             mag_msg.magnetic_field.y = float(self.magnetometer[1])
             mag_msg.magnetic_field.z = float(self.magnetometer[2])
 
-            # Publica los mensajes
             self.imu_publisher.publish(imu_msg)
             self.mag_publisher.publish(mag_msg)
-            #self.publish_tf(qua)
 
 
 def main(args=None):
