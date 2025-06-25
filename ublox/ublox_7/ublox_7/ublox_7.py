@@ -1,86 +1,81 @@
+#!/usr/bin/env python3
+import sys, os, json, threading, http.server, socketserver
 import rclpy
-import serial
-import struct
-import numpy as np
 from rclpy.node import Node
+from serial import Serial, SerialException
 from sensor_msgs.msg import NavSatFix
+from std_msgs.msg import Int32
 
 class Ublox7(Node):
     def __init__(self):
         super().__init__('ublox_7')
+        self.gps_pub = self.create_publisher(NavSatFix, '/ublox_7/sensor/gps', 10)
+        # NUEVO: publicador de satélites
+        self.sat_pub = self.create_publisher(Int32, '/ublox_7/sensor/satellites', 10)
 
-        self.gps_publisher = self.create_publisher(NavSatFix, '/ublox_7/sensor/gps', 10)
-
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('port_', '/dev/ttyACM0'),
-                ('baudrate_', 115200),
-                ('timeout_', 0.5),
-                ('rate_', 10.0)
-            ]
-        )
-        self.port_ = self.get_parameter('port_').get_parameter_value().string_value
+        self.declare_parameters('', [
+            ('port_',      '/dev/ttyACM0'),
+            ('baudrate_',  115200),
+            ('timeout_',   0.5),
+            ('rate_',      10.0),
+        ])
+        self.port_     = self.get_parameter('port_').get_parameter_value().string_value
         self.baudrate_ = self.get_parameter('baudrate_').get_parameter_value().integer_value
-        self.timeout_ = self.get_parameter('timeout_').get_parameter_value().double_value
-        self.rate = self.get_parameter('rate_').get_parameter_value().double_value
+        self.rate      = self.get_parameter('rate_').get_parameter_value().double_value
 
         try:
-            self.serial_device = serial.Serial(self.port_, self.baudrate_)
-            self.get_logger().info('Ublox 7 node started')
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to connect to serial device: {e}")
+            self.ser = Serial(self.port_, self.baudrate_, timeout=self.get_parameter('timeout_').value)
+        except SerialException as e:
+            self.get_logger().error(f"Cannot open serial port: {e}")
             rclpy.shutdown()
+            return
 
-        self.timer = self.create_timer(1.0 / self.rate, self.read_data)
+        self.timer = self.create_timer(1.0/self.rate, self.read_data)
 
     def read_data(self):
-        data = self.serial_device.readline().decode('utf-8').split(',')
+        line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+        parts = line.split(',')
+        if parts[0] != '$GPGGA' or len(parts) < 10:
+            return
+
         try:
-            if data[0] == '$GPGGA':
-                satelital = int(data[7])
-                self.alt = float(data[9])
-                if data[3] == 'S':
-                    datos = str(data[2])
-                    deg = int(datos[0:2])
-                    min = float(datos[2:])
-                    self.lat = float("-"+str(deg + min/60))
-                else:
-                    datos = str(data[2])
-                    deg = int(datos[0:2])
-                    min = float(datos[2:])
-                    self.lat = float(deg + min/60)
-                if data[5] == 'W':
-                    datos = str(data[4])
-                    deg = int(datos[0:3])
-                    min = float(datos[3:])
-                    self.lon = float("-"+str(deg + min/60))
-                else:
-                    datos = str(data[4])
-                    deg = int(datos[0:3])
-                    min = float(datos[3:])
-                    self.lon = float(deg + min/60)
+            sats = int(parts[7])
+            alt  = float(parts[9])
 
-                gps_data = NavSatFix()
-                gps_data.latitude = self.lat
-                gps_data.longitude = self.lon
-                gps_data.altitude = self.alt
-                gps_data.status.status = satelital
-                gps_data.header.stamp = self.get_clock().now().to_msg()
-                gps_data.header.frame_id = "ublox_7"
-                self.gps_publisher.publish(gps_data)
+            # convertir lat
+            lat_raw = parts[2]
+            lat = (int(lat_raw[:2]) + float(lat_raw[2:])/60.0)
+            if parts[3]=='S': lat = -lat
 
-        except serial.SerialException as e:
-            self.get_logger().error(f"Serial read error: {e}")
+            # convertir lon
+            lon_raw = parts[4]
+            lon = (int(lon_raw[:3]) + float(lon_raw[3:])/60.0)
+            if parts[5]=='W': lon = -lon
+
+            # PUBLICAR NavSatFix
+            msg = NavSatFix()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = 'ublox_7'
+            msg.latitude  = lat
+            msg.longitude = lon
+            msg.altitude  = alt
+            
+            self.gps_pub.publish(msg)
+
+            # PUBLICAR número de satélites
+            sat_msg = Int32()
+            sat_msg.data = sats
+            self.sat_pub.publish(sat_msg)
+
         except Exception as e:
-            self.get_logger().error(f"Unexpected error: {e}")
+            self.get_logger().error(f"Parse GPGGA failed: {e}")
 
 def main(args=None):
     rclpy.init(args=args)
-    ublox_7 = Ublox7()
-    rclpy.spin(ublox_7)
-    ublox_7.destroy_node()
+    node = Ublox7()
+    rclpy.spin(node)
+    node.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__=='__main__':
     main()
