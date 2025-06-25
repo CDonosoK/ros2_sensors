@@ -10,7 +10,7 @@ class Ublox7(Node):
     def __init__(self):
         super().__init__('ublox_7')
         self.gps_pub = self.create_publisher(NavSatFix, '/ublox_7/sensor/gps', 10)
-        # NUEVO: publicador de satélites
+
         self.sat_pub = self.create_publisher(Int32, '/ublox_7/sensor/satellites', 10)
 
         self.declare_parameters('', [
@@ -42,27 +42,23 @@ class Ublox7(Node):
             sats = int(parts[7])
             alt  = float(parts[9])
 
-            # convertir lat
             lat_raw = parts[2]
             lat = (int(lat_raw[:2]) + float(lat_raw[2:])/60.0)
             if parts[3]=='S': lat = -lat
 
-            # convertir lon
             lon_raw = parts[4]
             lon = (int(lon_raw[:3]) + float(lon_raw[3:])/60.0)
             if parts[5]=='W': lon = -lon
 
-            # PUBLICAR NavSatFix
             msg = NavSatFix()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'ublox_7'
             msg.latitude  = lat
             msg.longitude = lon
             msg.altitude  = alt
-            
+
             self.gps_pub.publish(msg)
 
-            # PUBLICAR número de satélites
             sat_msg = Int32()
             sat_msg.data = sats
             self.sat_pub.publish(sat_msg)
